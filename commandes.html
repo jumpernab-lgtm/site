@@ -22,7 +22,7 @@
     <div class="nav-links">
       <a href="./index.html">Accueil</a>
       <a href="./commandes.html" class="active">Commandes</a>
-      <a class="btn btn-primary btn-sm" href="./shop.html">Shop</a>
+      <a class="btn btn-primary btn-sm" href="./shop.html">Passer une Commande</a>
     </div>
   </nav>
 
@@ -216,7 +216,7 @@
           if (!data.tickets.length) {
             container.appendChild(el("div", { class: "empty" }, [
               el("p", { text: "Aucune commande pour l'instant." }),
-              el("a", { class: "btn btn-primary", href: "./shop.html", text: "Passer une demande" }),
+              el("a", { class: "btn btn-primary", href: "./shop.html", text: "Passer une commande" }),
             ]));
             return;
           }
