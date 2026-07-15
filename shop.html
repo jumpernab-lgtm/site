@@ -39,6 +39,7 @@
     <div class="notice">
       🚚 <strong>Livraison au Québec seulement.</strong> Les frais varient selon la distance entre
       votre adresse et notre atelier — le prix final vous est confirmé dans votre ticket.<br>
+      📏 La taille maximale d'un objet 3D est de <strong>10.2 × 10.2 × 10.2 cm</strong>.<br>
       ✉️ Support&nbsp;: <a href="mailto:impressions3dqc@proton.me">impressions3dqc@proton.me</a>
     </div>
 
@@ -47,7 +48,14 @@
       <div class="field">
         <label for="f-description">Que voulez-vous faire imprimer&nbsp;?</label>
         <textarea id="f-description" minlength="10" maxlength="4000" required
-          placeholder="Décrivez votre pièce : dimensions, couleur, matériau souhaité (PLA, PETG…), quantité, lien vers un modèle 3D si vous en avez un…"></textarea>
+          placeholder="Décrivez ce que vous voulez faire imprimer."></textarea>
+      </div>
+
+      <div class="field">
+        <label for="f-couleur">Couleur</label>
+        <select id="f-couleur" required>
+          <option value="" disabled selected>Chargement des couleurs…</option>
+        </select>
       </div>
 
       <div class="field-row">
@@ -156,6 +164,24 @@
       let pending = null; // données du formulaire en attente
       let resendCooldown = 0;
 
+      async function loadColors() {
+        const sel = $("#f-couleur");
+        let names = ["Noir", "Blanc"]; // valeurs de secours si le serveur dort encore
+        try {
+          const data = await api("/api/colors");
+          if (data.colors && data.colors.length) {
+            names = data.colors.map(function (c) { return c.name; });
+          }
+        } catch (e) { /* on garde les valeurs de secours */ }
+        sel.textContent = "";
+        const ph = el("option", { value: "", text: "Choisissez une couleur…" });
+        ph.disabled = true;
+        ph.selected = true;
+        sel.appendChild(ph);
+        for (const n of names) sel.appendChild(el("option", { value: n, text: n }));
+      }
+      loadColors();
+
       function busy(btn, isBusy, label) {
         btn.disabled = isBusy;
         btn.innerHTML = "";
@@ -207,10 +233,15 @@
         pending = {
           name: $("#f-name").value.trim(),
           description: $("#f-description").value.trim(),
+          couleur: $("#f-couleur").value,
           adresse: $("#f-adresse").value.trim(),
           ville: $("#f-ville").value.trim(),
           code_postal: cp,
         };
+        if (!pending.couleur) {
+          showAlert(formAlert, "Choisissez une couleur.");
+          return;
+        }
         if (pending.description.length < 10) {
           showAlert(formAlert, "Décrivez votre projet un peu plus en détail (au moins 10 caractères).");
           return;
