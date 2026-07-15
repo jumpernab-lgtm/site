@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shop — Impressions 3D QC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+
+  <nav class="nav">
+    <a class="nav-logo" href="./index.html">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 2 21 7v10l-9 5-9-5V7l9-5z" stroke="#FF6B1A" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M12 12 21 7M12 12v10M12 12 3 7" stroke="#FF6B1A" stroke-width="1.2"/>
+      </svg>
+      IMPRESSIONS<b>3D</b>QC
+    </a>
+    <div class="nav-links">
+      <a href="./index.html">Accueil</a>
+      <a href="./commandes.html">Commandes</a>
+      <a class="btn btn-primary btn-sm active" href="./shop.html">Shop</a>
+    </div>
+  </nav>
+
+  <main class="wrap" style="max-width: 760px;">
+    <div class="page-head">
+      <div class="eyebrow">; NOUVELLE_DEMANDE</div>
+      <h1>Faites imprimer votre idée</h1>
+      <p class="muted">
+        Décrivez ce que vous voulez faire imprimer en 3D. Votre demande crée un ticket&nbsp;:
+        on vous répond avec un prix, et vous confirmez seulement quand ça vous convient.
+      </p>
+    </div>
+
+    <div class="notice">
+      🚚 <strong>Livraison au Québec seulement.</strong> Les frais varient selon la distance entre
+      votre adresse et notre atelier — le prix final vous est confirmé dans votre ticket.<br>
+      ✉️ Support&nbsp;: <a href="mailto:impressions3dqc@proton.me">impressions3dqc@proton.me</a>
+    </div>
+
+    <!-- ================== ÉTAPE 1 : FORMULAIRE ================== -->
+    <form class="card" id="step-form">
+      <div class="field">
+        <label for="f-description">Que voulez-vous faire imprimer&nbsp;?</label>
+        <textarea id="f-description" maxlength="4000" required
+          placeholder="Décrivez votre pièce : dimensions, couleur, matériau souhaité (PLA, PETG…), quantité, lien vers un modèle 3D si vous en avez un…"></textarea>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="f-name">Votre nom</label>
+          <input type="text" id="f-name" maxlength="120" required placeholder="Prénom Nom">
+        </div>
+        <div class="field">
+          <label for="f-email">Votre courriel</label>
+          <input type="email" id="f-email" maxlength="254" required placeholder="vous@exemple.com">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="f-adresse">Adresse de livraison</label>
+        <input type="text" id="f-adresse" maxlength="200" required placeholder="123 rue Principale, app. 4">
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="f-ville">Ville</label>
+          <input type="text" id="f-ville" maxlength="100" required placeholder="Votre ville">
+        </div>
+        <div class="field">
+          <label for="f-cp">Code postal (Québec)</label>
+          <input type="text" id="f-cp" maxlength="7" required placeholder="J0X 1A0"
+            style="text-transform: uppercase;">
+        </div>
+      </div>
+
+      <label class="check">
+        <input type="checkbox" id="f-quebec" required>
+        <span>Je confirme que mon adresse de livraison est <strong>au Québec</strong> et je comprends
+        que les frais de livraison varient selon la distance depuis l'atelier.</span>
+      </label>
+
+      <div class="alert hidden" id="form-alert"></div>
+
+      <button class="btn btn-primary" type="submit" id="form-submit" style="width: 100%;">
+        Envoyer ma demande
+      </button>
+      <p class="muted" style="font-size: 0.85rem; margin: 12px 0 0;">
+        Un courriel de confirmation vous sera envoyé, et une copie de votre demande sera transmise à
+        <span class="mono">impressions3dqc@proton.me</span>.
+      </p>
+    </form>
+
+    <!-- ================== ÉTAPE 2 : VÉRIFICATION COURRIEL ================== -->
+    <div class="card hidden" id="step-code">
+      <div class="eyebrow">; VÉRIFICATION</div>
+      <h2>Vérifiez votre courriel</h2>
+      <p class="muted">
+        Un code à 6 chiffres a été envoyé à <strong id="code-email-label"></strong>.
+        Entrez-le ci-dessous pour envoyer votre demande. (Vérifiez vos indésirables si besoin.)
+      </p>
+      <div class="field">
+        <label for="f-code">Code de vérification</label>
+        <input type="text" id="f-code" inputmode="numeric" maxlength="6" placeholder="000000"
+          style="font-family: var(--font-mono); letter-spacing: 6px; font-size: 1.3rem; text-align: center;">
+      </div>
+      <div class="alert hidden" id="code-alert"></div>
+      <button class="btn btn-primary" id="code-submit" style="width: 100%;">Vérifier et envoyer ma demande</button>
+      <p class="muted" style="font-size: 0.88rem; margin: 14px 0 0;">
+        <a href="#" id="code-resend">Renvoyer un code</a> ·
+        <a href="#" id="code-back">Modifier mes informations</a>
+      </p>
+    </div>
+
+    <!-- ================== ÉTAPE 3 : SUCCÈS ================== -->
+    <div class="card hidden" id="step-done">
+      <div class="eyebrow">; DEMANDE_CRÉÉE</div>
+      <h2>Votre demande est envoyée ✔</h2>
+      <div class="successbox">
+        Ticket <strong class="mono" id="done-ticket-id"></strong> créé. Un courriel de confirmation
+        vient de vous être envoyé, et notre équipe a été notifiée.
+      </div>
+      <p class="muted">
+        On vous répond bientôt avec un prix. Vous pouvez suivre la discussion et confirmer votre
+        commande dans l'onglet «&nbsp;Commandes&nbsp;». Pour toute question&nbsp;:
+        <a href="mailto:impressions3dqc@proton.me">impressions3dqc@proton.me</a>
+      </p>
+      <a class="btn btn-primary" id="done-link" href="./commandes.html">Voir ma demande</a>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      © 2026 Impressions 3D QC — Livraison au Québec seulement ·
+      Support&nbsp;: <a href="mailto:impressions3dqc@proton.me">impressions3dqc@proton.me</a>
+    </div>
+  </footer>
+
+  <div id="server-hint">⏳ Le serveur se réveille… le premier chargement peut prendre jusqu'à une minute.</div>
+  <script src="./assets/app.js"></script>
+  <script>
+    (function () {
+      const stepForm = $("#step-form");
+      const stepCode = $("#step-code");
+      const stepDone = $("#step-done");
+      const formAlert = $("#form-alert");
+      const codeAlert = $("#code-alert");
+      const submitBtn = $("#form-submit");
+      const codeBtn = $("#code-submit");
+
+      const POSTAL_QC = /^[GHJ]\d[A-Z]\s?\d[A-Z]\d$/i;
+      let pending = null; // données du formulaire en attente
+      let resendCooldown = 0;
+
+      function busy(btn, isBusy, label) {
+        btn.disabled = isBusy;
+        btn.innerHTML = "";
+        if (isBusy) {
+          btn.appendChild(el("span", { class: "spin" }));
+          btn.appendChild(document.createTextNode(" Un instant…"));
+        } else {
+          btn.textContent = label;
+        }
+      }
+
+      function show(step) {
+        stepForm.classList.toggle("hidden", step !== "form");
+        stepCode.classList.toggle("hidden", step !== "code");
+        stepDone.classList.toggle("hidden", step !== "done");
+        window.scrollTo({ top: 0 });
+      }
+
+      async function createTicket() {
+        const data = await api("/api/tickets", { method: "POST", body: pending });
+        $("#done-ticket-id").textContent = data.ticket.id;
+        $("#done-link").href = "./commandes.html?ticket=" + encodeURIComponent(data.ticket.id);
+        show("done");
+      }
+
+      async function requestCode(email) {
+        await api("/api/auth/request-code", { method: "POST", body: { email: email } });
+        $("#code-email-label").textContent = email;
+        $("#f-code").value = "";
+        show("code");
+        $("#f-code").focus();
+        resendCooldown = Date.now() + 30000;
+      }
+
+      stepForm.addEventListener("submit", async function (evt) {
+        evt.preventDefault();
+        hideAlert(formAlert);
+
+        const cp = $("#f-cp").value.trim().toUpperCase();
+        if (!POSTAL_QC.test(cp)) {
+          showAlert(formAlert, "Nous livrons uniquement au Québec : le code postal doit commencer par G, H ou J (ex. J0X 1A0).");
+          return;
+        }
+        if (!$("#f-quebec").checked) {
+          showAlert(formAlert, "Veuillez confirmer que votre adresse de livraison est au Québec.");
+          return;
+        }
+
+        pending = {
+          name: $("#f-name").value.trim(),
+          description: $("#f-description").value.trim(),
+          adresse: $("#f-adresse").value.trim(),
+          ville: $("#f-ville").value.trim(),
+          code_postal: cp,
+        };
+        const email = $("#f-email").value.trim().toLowerCase();
+
+        busy(submitBtn, true);
+        try {
+          if (custToken() && custEmail() === email) {
+            // Déjà connecté avec ce courriel : on crée le ticket directement
+            try {
+              await createTicket();
+            } catch (e) {
+              if (e.status === 401) { clearCust(); await requestCode(email); }
+              else throw e;
+            }
+          } else {
+            clearCust();
+            await requestCode(email);
+          }
+        } catch (e) {
+          showAlert(formAlert, e.error || "Une erreur est survenue. Réessayez.");
+        }
+        busy(submitBtn, false, "Envoyer ma demande");
+      });
+
+      codeBtn.addEventListener("click", async function () {
+        hideAlert(codeAlert);
+        const code = $("#f-code").value.trim();
+        if (!/^\d{6}$/.test(code)) {
+          showAlert(codeAlert, "Entrez le code à 6 chiffres reçu par courriel.");
+          return;
+        }
+        busy(codeBtn, true);
+        try {
+          const email = $("#code-email-label").textContent;
+          const auth = await api("/api/auth/verify", { method: "POST", body: { email: email, code: code } });
+          setCust(auth.token, auth.email);
+          await createTicket();
+        } catch (e) {
+          showAlert(codeAlert, e.error || "Code invalide.");
+        }
+        busy(codeBtn, false, "Vérifier et envoyer ma demande");
+      });
+
+      $("#f-code").addEventListener("keydown", function (evt) {
+        if (evt.key === "Enter") { evt.preventDefault(); codeBtn.click(); }
+      });
+
+      $("#code-resend").addEventListener("click", async function (evt) {
+        evt.preventDefault();
+        hideAlert(codeAlert);
+        if (Date.now() < resendCooldown) {
+          showAlert(codeAlert, "Patientez quelques secondes avant de renvoyer un code.");
+          return;
+        }
+        try {
+          await requestCode($("#code-email-label").textContent);
+          showAlert(codeAlert, "Nouveau code envoyé ✔");
+        } catch (e) {
+          showAlert(codeAlert, e.error || "Impossible de renvoyer un code pour l'instant.");
+        }
+      });
+
+      $("#code-back").addEventListener("click", function (evt) {
+        evt.preventDefault();
+        show("form");
+      });
+    })();
+  </script>
+</body>
+</html>
