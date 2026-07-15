@@ -272,12 +272,20 @@
       function renderPaymentNote(ticket) {
         const zone = $("#detail-payment");
         zone.textContent = "";
-        if (ticket.status === "en_cours") {
-          zone.appendChild(el("div", { class: "payment-note" }, [
-            el("strong", { text: "💳 Paiement — bientôt disponible en ligne. " }),
-            "Nous vous contacterons par courriel (" + window.SUPPORT_EMAIL +
-            ") pour organiser le paiement (ex. virement Interac).",
-          ]));
+        if (ticket.status === "ouvert") {
+          if (ticket.price_cents) {
+            zone.appendChild(el("div", { class: "payment-note" }, [
+              el("strong", { text: "✅ Ticket validé — prix confirmé : " + fmtPrice(ticket.price_cents) + ". " }),
+              "Cliquez sur « Confirmer ma commande » pour payer par carte (paiement sécurisé Stripe). La production démarre dès le paiement.",
+            ]));
+          } else {
+            zone.appendChild(el("div", { class: "notice", text: "⏳ En attente de validation par notre équipe : le bouton « Confirmer ma commande » s'activera dès qu'un prix aura été confirmé pour votre demande." }));
+          }
+        } else if (ticket.status === "en_cours") {
+          const label = ticket.paid_at
+            ? "💳 Paiement reçu le " + fmtDate(ticket.paid_at) + (ticket.price_cents ? " (" + fmtPrice(ticket.price_cents) + ")" : "") + ". Votre commande est en production."
+            : "Votre commande est en production.";
+          zone.appendChild(el("div", { class: "payment-note", text: label }));
         }
       }
 
@@ -288,15 +296,21 @@
         badgeSlot.textContent = "";
         badgeSlot.appendChild(badge(t.status));
 
-        // Bouton « Confirmer ma commande » en haut à droite (statut ouvert seulement)
+        // Bouton « Confirmer ma commande » en haut à droite (statut ouvert seulement).
+        // Grisé tant que le ticket n'a pas été validé (prix fixé) par notre équipe.
         const actions = $("#detail-actions");
         actions.textContent = "";
         if (t.status === "ouvert") {
-          actions.appendChild(el("button", {
+          const confirmBtn = el("button", {
             class: "btn btn-primary",
             text: "Confirmer ma commande",
-            onclick: function () { confirmOrder(t.id, this); },
-          }));
+            onclick: function () { startCheckout(t.id, this); },
+          });
+          if (!t.price_cents) {
+            confirmBtn.disabled = true;
+            confirmBtn.title = "En attente de validation par notre équipe";
+          }
+          actions.appendChild(confirmBtn);
         }
 
         renderPaymentNote(t);
@@ -312,6 +326,7 @@
         ];
         if (t.confirmed_at) pairs.splice(2, 0, ["Confirmée le", fmtDate(t.confirmed_at)]);
         if (t.completed_at) pairs.splice(2, 0, ["Complétée le", fmtDate(t.completed_at)]);
+        if (t.price_cents) pairs.splice(2, 0, ["Prix", fmtPrice(t.price_cents)]);
         for (const p of pairs) {
           kv.appendChild(el("dt", { text: p[0] }));
           kv.appendChild(el("dd", { text: p[1] }));
@@ -339,7 +354,7 @@
       function detailKey(data) {
         const msgs = data.messages;
         const last = msgs.length ? msgs[msgs.length - 1].id : 0;
-        return data.ticket.status + ":" + msgs.length + ":" + last;
+        return data.ticket.status + ":" + (data.ticket.price_cents || 0) + ":" + msgs.length + ":" + last;
       }
 
       async function openTicket(id) {
@@ -351,6 +366,15 @@
           const data = await api("/api/tickets/" + encodeURIComponent(id));
           renderDetail(data);
           lastDetailKey = detailKey(data);
+          if (paymentFlash === "succes") {
+            const box = $("#detail-success");
+            box.textContent = "Paiement effectué ✔ Merci ! Votre commande passe en production — le statut se met à jour dans quelques secondes.";
+            box.classList.remove("hidden");
+            paymentFlash = null;
+          } else if (paymentFlash === "annule") {
+            showAlert($("#detail-alert"), "Paiement annulé. Vous pouvez réessayer quand vous voulez avec « Confirmer ma commande ».");
+            paymentFlash = null;
+          }
           // Rafraîchissement automatique : nouveaux messages / changements de statut
           pollTimer = setInterval(async function () {
             if (document.hidden) return;
@@ -369,19 +393,16 @@
         }
       }
 
-      async function confirmOrder(id, btn) {
+      async function startCheckout(id, btn) {
         btn.disabled = true;
+        btn.textContent = "Redirection vers le paiement…";
         try {
-          await api("/api/tickets/" + encodeURIComponent(id) + "/confirm", { method: "POST" });
-          const fresh = await api("/api/tickets/" + encodeURIComponent(id));
-          renderDetail(fresh);
-          lastDetailKey = detailKey(fresh);
-          const box = $("#detail-success");
-          box.textContent = "Commande confirmée ✔ Elle est maintenant en production. Un courriel de confirmation vous a été envoyé.";
-          box.classList.remove("hidden");
+          const data = await api("/api/tickets/" + encodeURIComponent(id) + "/checkout", { method: "POST" });
+          window.location.href = data.url; // page de paiement sécurisée Stripe
         } catch (e) {
           btn.disabled = false;
-          if (!handleAuthError(e)) showAlert($("#detail-alert"), e.error || "Impossible de confirmer pour l'instant.");
+          btn.textContent = "Confirmer ma commande";
+          if (!handleAuthError(e)) showAlert($("#detail-alert"), e.error || "Impossible de démarrer le paiement.");
         }
       }
 
@@ -412,6 +433,13 @@
 
       /* ---------------- Démarrage ---------------- */
       const params = new URLSearchParams(location.search);
+      let paymentFlash = params.get("paiement"); // "succes" | "annule" au retour de Stripe
+      if (paymentFlash) {
+        const clean = params.get("ticket")
+          ? location.pathname + "?ticket=" + encodeURIComponent(params.get("ticket"))
+          : location.pathname;
+        history.replaceState(null, "", clean);
+      }
       if (!custToken()) {
         show("login");
       } else if (params.get("ticket")) {
