@@ -106,12 +106,16 @@
       let allTickets = [];
       let activeTab = "ouvert";
       let currentTicketId = null;
-      let pollTimer = null;
+      let pollTimer = null;       // suivi auto du ticket ouvert
+      let panelPollTimer = null;  // suivi auto de la file d'attente
+      let lastDetailKey = "";
+      let lastPanelKey = "";
       const RETENTION_DAYS = 30;
 
       function show(name) {
         for (const key of Object.keys(views)) views[key].classList.toggle("hidden", key !== name);
-        if (name !== "detail" && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (panelPollTimer) { clearInterval(panelPollTimer); panelPollTimer = null; }
         renderNavActions(name !== "login");
         window.scrollTo({ top: 0 });
       }
@@ -196,6 +200,10 @@
         }
       }
 
+      function panelKey() {
+        return JSON.stringify(allTickets.map(function (t) { return [t.id, t.status]; }));
+      }
+
       async function openPanel() {
         show("panel");
         hideAlert($("#panel-alert"));
@@ -203,6 +211,18 @@
         try {
           await loadAll();
           renderList();
+          lastPanelKey = panelKey();
+          // Rafraîchissement automatique : nouveaux tickets, confirmations, compteurs
+          panelPollTimer = setInterval(async function () {
+            if (document.hidden) return;
+            try {
+              await loadAll(); // met aussi à jour les compteurs des onglets
+              if (panelKey() !== lastPanelKey) {
+                lastPanelKey = panelKey();
+                renderList();
+              }
+            } catch (e) { /* silencieux */ }
+          }, 15000);
         } catch (e) {
           if (!handleAuthError(e)) showAlert($("#panel-alert"), e.error || "Erreur de chargement.");
         }
@@ -282,6 +302,12 @@
         }
       }
 
+      function detailKey(data) {
+        const msgs = data.messages;
+        const last = msgs.length ? msgs[msgs.length - 1].id : 0;
+        return data.ticket.status + ":" + msgs.length + ":" + last;
+      }
+
       async function openTicket(id) {
         currentTicketId = id;
         show("detail");
@@ -289,13 +315,18 @@
         try {
           const data = await api("/api/tickets/" + encodeURIComponent(id), { admin: true });
           renderDetail(data);
-          if (pollTimer) clearInterval(pollTimer);
+          lastDetailKey = detailKey(data);
+          // Rafraîchissement automatique : nouveaux messages / changements de statut
           pollTimer = setInterval(async function () {
+            if (document.hidden) return;
             try {
               const fresh = await api("/api/tickets/" + encodeURIComponent(currentTicketId), { admin: true });
-              renderDetail(fresh);
+              if (detailKey(fresh) !== lastDetailKey) {
+                lastDetailKey = detailKey(fresh);
+                renderDetail(fresh);
+              }
             } catch (e) { /* silencieux pendant le polling */ }
-          }, 15000);
+          }, 5000);
         } catch (e) {
           if (!handleAuthError(e)) showAlert($("#detail-alert"), e.error || "Ticket introuvable.");
         }
@@ -308,6 +339,7 @@
           await api("/api/admin/tickets/" + encodeURIComponent(ticket.id) + "/complete", { method: "POST", admin: true });
           const fresh = await api("/api/tickets/" + encodeURIComponent(ticket.id), { admin: true });
           renderDetail(fresh);
+          lastDetailKey = detailKey(fresh);
         } catch (e) {
           btn.disabled = false;
           if (!handleAuthError(e)) showAlert($("#detail-alert"), e.error || "Action impossible.");
@@ -333,6 +365,7 @@
           box.value = "";
           const fresh = await api("/api/tickets/" + encodeURIComponent(currentTicketId), { admin: true });
           renderDetail(fresh);
+          lastDetailKey = detailKey(fresh);
         } catch (e) {
           if (!handleAuthError(e)) showAlert($("#detail-alert"), e.error || "Message non envoyé.");
         }
