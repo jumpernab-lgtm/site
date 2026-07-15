@@ -28,6 +28,7 @@
 html, body {
   margin: 0;
   padding: 0;
+  color-scheme: dark;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
@@ -149,6 +150,24 @@ a:hover { text-decoration: underline; }
 }
 .btn-ghost:hover { border-color: var(--accent-soft); }
 .btn-sm { padding: 6px 12px; font-size: 0.85rem; }
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border-color: rgba(255, 93, 93, 0.5);
+}
+.btn-danger:hover { border-color: var(--danger); }
+
+.color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  margin-bottom: 8px;
+}
 
 /* --- Héros ----------------------------------------------------- */
 .hero { padding: 84px 0 72px; border-bottom: 1px solid var(--line); }
@@ -241,6 +260,7 @@ a:hover { text-decoration: underline; }
 .field input[type="text"],
 .field input[type="email"],
 .field input[type="password"],
+.field select,
 .field textarea {
   width: 100%;
   background: var(--bg);
@@ -252,7 +272,7 @@ a:hover { text-decoration: underline; }
   font-size: 1rem;
 }
 .field textarea { min-height: 130px; resize: vertical; }
-.field input:focus, .field textarea:focus {
+.field input:focus, .field select:focus, .field textarea:focus {
   outline: none;
   border-color: var(--accent);
 }
