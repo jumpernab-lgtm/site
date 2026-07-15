@@ -47,6 +47,11 @@ function fmtDate(ts) {
   } catch (e) { return ""; }
 }
 
+function fmtPrice(cents) {
+  if (!cents && cents !== 0) return "";
+  return (cents / 100).toLocaleString("fr-CA", { style: "currency", currency: "CAD" });
+}
+
 function badge(status) {
   return el("span", {
     class: "badge " + (STATUS_CLASS[status] || ""),
