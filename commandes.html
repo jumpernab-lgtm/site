@@ -125,12 +125,16 @@
     (function () {
       const views = { login: $("#view-login"), list: $("#view-list"), detail: $("#view-detail") };
       let currentTicketId = null;
-      let pollTimer = null;
+      let pollTimer = null;      // suivi auto du ticket ouvert
+      let listPollTimer = null;  // suivi auto de la liste
+      let lastDetailKey = "";
+      let lastListKey = "";
       let resendCooldown = 0;
 
       function show(name) {
         for (const key of Object.keys(views)) views[key].classList.toggle("hidden", key !== name);
-        if (name !== "detail" && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (listPollTimer) { clearInterval(listPollTimer); listPollTimer = null; }
         window.scrollTo({ top: 0 });
       }
 
@@ -204,33 +208,53 @@
       });
 
       /* ---------------- Liste ---------------- */
+      function listKey(tickets) {
+        return JSON.stringify(tickets.map(function (t) { return [t.id, t.status]; }));
+      }
+
+      function renderList(tickets) {
+        const container = $("#list-container");
+        container.textContent = "";
+        if (!tickets.length) {
+          container.appendChild(el("div", { class: "empty" }, [
+            el("p", { text: "Aucune commande pour l'instant." }),
+            el("a", { class: "btn btn-primary", href: "./shop.html", text: "Passer une commande" }),
+          ]));
+          return;
+        }
+        for (const t of tickets) {
+          const row = el("button", { class: "ticket-row", type: "button", onclick: function () { openTicket(t.id); } }, [
+            el("div", { class: "tr-top" }, [
+              el("span", { class: "tr-id", text: t.id }),
+              badge(t.status),
+              el("span", { class: "tr-date", text: fmtDate(t.created_at) }),
+            ]),
+            el("p", { class: "tr-preview", text: t.ville + " — " + t.description }),
+          ]);
+          container.appendChild(row);
+        }
+      }
+
       async function openList() {
         show("list");
         $("#list-email").textContent = custEmail();
         hideAlert($("#list-alert"));
-        const container = $("#list-container");
-        container.textContent = "Chargement…";
+        $("#list-container").textContent = "Chargement…";
         try {
           const data = await api("/api/me/tickets");
-          container.textContent = "";
-          if (!data.tickets.length) {
-            container.appendChild(el("div", { class: "empty" }, [
-              el("p", { text: "Aucune commande pour l'instant." }),
-              el("a", { class: "btn btn-primary", href: "./shop.html", text: "Passer une commande" }),
-            ]));
-            return;
-          }
-          for (const t of data.tickets) {
-            const row = el("button", { class: "ticket-row", type: "button", onclick: function () { openTicket(t.id); } }, [
-              el("div", { class: "tr-top" }, [
-                el("span", { class: "tr-id", text: t.id }),
-                badge(t.status),
-                el("span", { class: "tr-date", text: fmtDate(t.created_at) }),
-              ]),
-              el("p", { class: "tr-preview", text: t.ville + " — " + t.description }),
-            ]);
-            container.appendChild(row);
-          }
+          renderList(data.tickets);
+          lastListKey = listKey(data.tickets);
+          // Rafraîchissement automatique de la liste (nouveaux statuts, nouvelles commandes)
+          listPollTimer = setInterval(async function () {
+            if (document.hidden) return;
+            try {
+              const fresh = await api("/api/me/tickets");
+              if (listKey(fresh.tickets) !== lastListKey) {
+                lastListKey = listKey(fresh.tickets);
+                renderList(fresh.tickets);
+              }
+            } catch (e) { /* silencieux */ }
+          }, 20000);
         } catch (e) {
           if (!handleAuthError(e)) showAlert($("#list-alert"), e.error || "Erreur de chargement.");
         }
@@ -311,6 +335,12 @@
         }
       }
 
+      function detailKey(data) {
+        const msgs = data.messages;
+        const last = msgs.length ? msgs[msgs.length - 1].id : 0;
+        return data.ticket.status + ":" + msgs.length + ":" + last;
+      }
+
       async function openTicket(id) {
         currentTicketId = id;
         show("detail");
@@ -319,13 +349,18 @@
         try {
           const data = await api("/api/tickets/" + encodeURIComponent(id));
           renderDetail(data);
-          if (pollTimer) clearInterval(pollTimer);
+          lastDetailKey = detailKey(data);
+          // Rafraîchissement automatique : nouveaux messages / changements de statut
           pollTimer = setInterval(async function () {
+            if (document.hidden) return;
             try {
               const fresh = await api("/api/tickets/" + encodeURIComponent(currentTicketId));
-              renderDetail(fresh);
+              if (detailKey(fresh) !== lastDetailKey) {
+                lastDetailKey = detailKey(fresh);
+                renderDetail(fresh);
+              }
             } catch (e) { /* silencieux pendant le polling */ }
-          }, 15000);
+          }, 5000);
         } catch (e) {
           if (!handleAuthError(e)) {
             showAlert($("#detail-alert"), e.error || "Ticket introuvable.");
@@ -336,11 +371,10 @@
       async function confirmOrder(id, btn) {
         btn.disabled = true;
         try {
-          const data = await api("/api/tickets/" + encodeURIComponent(id) + "/confirm", { method: "POST" });
-          renderDetail({ ticket: data.ticket, messages: [] });
-          // Recharge la discussion complète
+          await api("/api/tickets/" + encodeURIComponent(id) + "/confirm", { method: "POST" });
           const fresh = await api("/api/tickets/" + encodeURIComponent(id));
           renderDetail(fresh);
+          lastDetailKey = detailKey(fresh);
           const box = $("#detail-success");
           box.textContent = "Commande confirmée ✔ Elle est maintenant en production. Un courriel de confirmation vous a été envoyé.";
           box.classList.remove("hidden");
@@ -368,6 +402,7 @@
           box.value = "";
           const fresh = await api("/api/tickets/" + encodeURIComponent(currentTicketId));
           renderDetail(fresh);
+          lastDetailKey = detailKey(fresh);
         } catch (e) {
           if (!handleAuthError(e)) showAlert($("#detail-alert"), e.error || "Message non envoyé.");
         }
