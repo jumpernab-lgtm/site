@@ -5,7 +5,7 @@
 /* ⚙️ À MODIFIER : URL de votre backend déployé sur Render (sans / à la fin) */
 window.API_BASE = "https://backend-4qf6.onrender.com";
 
-window.SUPPORT_EMAIL = "impressions3dqc@proton.me";
+window.SUPPORT_EMAIL = "jumpernab@gmail.com";
 
 /* --- Statuts ------------------------------------------------ */
 const STATUS_LABELS = {
