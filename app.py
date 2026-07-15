@@ -17,6 +17,8 @@
 #    DB_PATH          Chemin du fichier SQLite (défaut: data.db)
 #    DEV_MODE         "1" = renvoie le code de vérification dans la réponse
 #                     (POUR TESTS SEULEMENT — ne jamais activer en production)
+#    STRIPE_SECRET_KEY     Clé secrète Stripe (sk_test_… ou sk_live_…)
+#    STRIPE_WEBHOOK_SECRET Secret de signature du webhook Stripe (whsec_…)
 # ============================================================
 
 import os
@@ -33,6 +35,7 @@ from flask_cors import CORS
 from werkzeug.security import generate_password_hash, check_password_hash
 
 import requests as http_client
+import stripe
 
 # ------------------------------------------------------------
 # Configuration
@@ -46,6 +49,12 @@ ADMIN_EMAIL    = os.environ.get("ADMIN_EMAIL", "impressions3dqc@proton.me")
 SITE_URL       = os.environ.get("SITE_URL", "").rstrip("/")
 CORS_ORIGINS   = os.environ.get("CORS_ORIGINS", "*")
 DEV_MODE       = os.environ.get("DEV_MODE", "") == "1"
+STRIPE_SECRET_KEY     = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+CURRENCY = "cad"  # devise des paiements Stripe
+
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
 
 # Hash du mot de passe admin gardé en mémoire seulement (jamais en clair sur disque)
 ADMIN_HASH = generate_password_hash(ADMIN_PASSWORD) if ADMIN_PASSWORD else None
@@ -60,7 +69,7 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 POSTAL_QC_RE = re.compile(r"^[GHJ]\d[A-Z]\s?\d[A-Z]\d$", re.IGNORECASE)
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 32 * 1024  # 32 Ko max par requête
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024  # 64 Ko max par requête (webhooks Stripe inclus)
 
 _origins = "*" if CORS_ORIGINS.strip() == "*" else [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
 CORS(app, resources={r"/*": {"origins": _origins}}, allow_headers=["Content-Type", "Authorization"])
@@ -75,6 +84,10 @@ CREATE TABLE IF NOT EXISTS tickets (
   name         TEXT NOT NULL,
   description  TEXT NOT NULL,
   couleur      TEXT NOT NULL DEFAULT '',
+  price_cents  INTEGER,
+  validated_at INTEGER,
+  paid_at      INTEGER,
+  stripe_session_id TEXT,
   adresse      TEXT NOT NULL,
   ville        TEXT NOT NULL,
   code_postal  TEXT NOT NULL,
@@ -136,10 +149,18 @@ def _close_db(exc=None):
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA)
-    # Migration : ajoute la colonne couleur aux bases existantes
+    # Migration : ajoute les colonnes manquantes aux bases existantes
     cols = [r[1] for r in conn.execute("PRAGMA table_info(tickets)").fetchall()]
-    if "couleur" not in cols:
-        conn.execute("ALTER TABLE tickets ADD COLUMN couleur TEXT NOT NULL DEFAULT ''")
+    needed = {
+        "couleur": "TEXT NOT NULL DEFAULT ''",
+        "price_cents": "INTEGER",
+        "validated_at": "INTEGER",
+        "paid_at": "INTEGER",
+        "stripe_session_id": "TEXT",
+    }
+    for col, decl in needed.items():
+        if col not in cols:
+            conn.execute(f"ALTER TABLE tickets ADD COLUMN {col} {decl}")
     # Couleurs par défaut au premier démarrage
     if conn.execute("SELECT COUNT(*) FROM colors").fetchone()[0] == 0:
         conn.executemany("INSERT INTO colors (name) VALUES (?)", [("Noir",), ("Blanc",)])
@@ -285,12 +306,20 @@ def colors_list() -> list[dict]:
     rows = db().execute("SELECT id, name FROM colors ORDER BY name COLLATE NOCASE").fetchall()
     return [{"id": r["id"], "name": r["name"]} for r in rows]
 
+def price_str(cents) -> str:
+    if not cents:
+        return ""
+    return f"{cents / 100:.2f}".replace(".", ",") + " $ CAD"
+
 def ticket_dict(row: sqlite3.Row, include_private: bool) -> dict:
     d = {
         "id": row["id"],
         "status": row["status"],
         "description": row["description"],
         "couleur": row["couleur"],
+        "price_cents": row["price_cents"],
+        "validated_at": row["validated_at"],
+        "paid_at": row["paid_at"],
         "created_at": row["created_at"],
         "confirmed_at": row["confirmed_at"],
         "completed_at": row["completed_at"],
@@ -572,8 +601,12 @@ def post_message(tid):
     ).fetchone()
     return jsonify({"message": dict(msg)}), 201
 
-@app.post("/api/tickets/<tid>/confirm")
-def confirm_ticket(tid):
+# ------------------------------------------------------------
+# Paiement Stripe
+# ------------------------------------------------------------
+@app.post("/api/tickets/<tid>/checkout")
+def create_checkout(tid):
+    """Crée une session Stripe Checkout pour un ticket validé (prix fixé par l'admin)."""
     email = get_customer_email()
     if not email:
         return err("Connexion requise.", 401)
@@ -582,37 +615,101 @@ def confirm_ticket(tid):
         return err("Ticket introuvable.", 404)
     if row["status"] != "ouvert":
         return err("Cette commande est déjà confirmée.", 409)
+    if not row["price_cents"]:
+        return err("Ce ticket n'a pas encore été validé par notre équipe.", 409)
+    if not STRIPE_SECRET_KEY:
+        return err(f"Le paiement en ligne n'est pas encore configuré. Contactez-nous : {ADMIN_EMAIL}", 503)
+    if not SITE_URL:
+        return err("SITE_URL n'est pas configuré sur le serveur.", 503)
+    if count_attempts(f"checkout:{email}", 3600) >= 10:
+        return err("Trop de tentatives de paiement. Réessayez plus tard.", 429)
+    record_attempt(f"checkout:{email}")
+
+    desc = (f"Couleur : {row['couleur']} · " if row["couleur"] else "") + row["description"]
+    try:
+        session = stripe.checkout.Session.create(
+            mode="payment",
+            line_items=[{
+                "price_data": {
+                    "currency": CURRENCY,
+                    "product_data": {
+                        "name": f"Commande {tid} — Impression 3D",
+                        "description": desc[:200],
+                    },
+                    "unit_amount": int(row["price_cents"]),
+                },
+                "quantity": 1,
+            }],
+            customer_email=row["email"],
+            metadata={"ticket_id": tid},
+            success_url=f"{SITE_URL}/commandes.html?ticket={tid}&paiement=succes",
+            cancel_url=f"{SITE_URL}/commandes.html?ticket={tid}&paiement=annule",
+        )
+    except Exception as exc:  # noqa: BLE001
+        app.logger.error("Erreur Stripe (checkout) : %s", exc)
+        return err("Impossible de démarrer le paiement pour l'instant. Réessayez dans un moment.", 502)
+
+    db().execute("UPDATE tickets SET stripe_session_id = ? WHERE id = ?", (session.id, tid))
+    db().commit()
+    return jsonify({"url": session.url})
+
+def mark_ticket_paid(tid: str):
+    """Passe le ticket en « Commande en cours » après un paiement confirmé (idempotent)."""
+    if not tid:
+        return
+    row = db().execute("SELECT * FROM tickets WHERE id = ?", (tid,)).fetchone()
+    if not row or row["status"] != "ouvert":
+        return  # déjà traité, ou ticket introuvable
 
     db().execute(
-        "UPDATE tickets SET status = 'en_cours', confirmed_at = ? WHERE id = ?",
-        (now(), tid),
+        "UPDATE tickets SET status = 'en_cours', confirmed_at = ?, paid_at = ? WHERE id = ?",
+        (now(), now(), tid),
     )
     db().commit()
 
+    montant = price_str(row["price_cents"])
     send_email(
-        email,
-        f"[{tid}] Commande confirmée",
+        row["email"],
+        f"[{tid}] Paiement reçu — commande confirmée ✔",
         email_layout(
-            "Commande confirmée ✔",
-            [f"Votre commande <strong>{tid}</strong> est confirmée et passe en production.",
-             "<strong>Paiement :</strong> nous vous contacterons par courriel pour organiser le paiement.",
+            "Paiement reçu ✔",
+            [f"Bonjour {html.escape(row['name'])},",
+             f"Nous avons bien reçu votre paiement{f' de <strong>{montant}</strong>' if montant else ''} "
+             f"pour la commande <strong>{tid}</strong>.",
+             "Elle passe maintenant en production. Merci !",
              f"Questions : {ADMIN_EMAIL}"],
             ticket_link_client(tid), "Suivre ma commande",
         ),
     )
     send_email(
         ADMIN_EMAIL,
-        f"[{tid}] {row['name']} a confirmé sa commande",
+        f"[{tid}] 💰 Paiement reçu de {row['name']}",
         email_layout(
-            "Commande confirmée",
-            [f"<strong>{html.escape(row['name'])}</strong> ({html.escape(row['email'])}) vient de confirmer "
-             f"la commande <strong>{tid}</strong>.",
+            "Paiement reçu",
+            [f"<strong>{html.escape(row['name'])}</strong> ({html.escape(row['email'])}) a payé "
+             f"{f'<strong>{montant}</strong> ' if montant else ''}pour la commande <strong>{tid}</strong>.",
              "Elle est maintenant dans « Commandes en cours »."],
             ticket_link_admin(tid), "Voir la commande",
         ),
     )
-    row = db().execute("SELECT * FROM tickets WHERE id = ?", (tid,)).fetchone()
-    return jsonify({"ticket": ticket_dict(row, include_private=True)})
+
+@app.post("/api/stripe/webhook")
+def stripe_webhook():
+    """Webhook Stripe : confirme la commande quand le paiement est complété."""
+    if not STRIPE_WEBHOOK_SECRET:
+        return err("Webhook Stripe non configuré.", 503)
+    payload = request.get_data()
+    signature = request.headers.get("Stripe-Signature", "")
+    try:
+        event = stripe.Webhook.construct_event(payload, signature, STRIPE_WEBHOOK_SECRET)
+    except Exception:  # noqa: BLE001
+        return err("Signature invalide.", 400)
+
+    if event["type"] in ("checkout.session.completed", "checkout.session.async_payment_succeeded"):
+        session = event["data"]["object"]
+        if session.get("payment_status") == "paid":
+            mark_ticket_paid((session.get("metadata") or {}).get("ticket_id", ""))
+    return jsonify({"received": True})
 
 # ------------------------------------------------------------
 # Couleurs disponibles (menu du formulaire de commande)
@@ -684,6 +781,51 @@ def admin_tickets():
     else:
         rows = db().execute("SELECT * FROM tickets ORDER BY created_at DESC").fetchall()
     return jsonify({"tickets": [ticket_dict(r, include_private=True) for r in rows]})
+
+@app.post("/api/admin/tickets/<tid>/validate")
+def admin_validate(tid):
+    """Valide un ticket : fixe le prix exact et active le bouton de paiement du client."""
+    if not is_admin():
+        return err("Accès refusé.", 401)
+    row = db().execute("SELECT * FROM tickets WHERE id = ?", (tid,)).fetchone()
+    if not row:
+        return err("Ticket introuvable.", 404)
+    if row["status"] != "ouvert":
+        return err("Seul un ticket ouvert peut être validé.", 409)
+
+    raw = str(json_body().get("price", "")).replace(",", ".").replace("$", "").strip()
+    try:
+        cents = round(float(raw) * 100)
+    except ValueError:
+        return err("Prix invalide. Exemple : 25.50", 400)
+    if cents < 50:
+        return err("Le prix minimum est de 0,50 $ CAD.", 400)
+    if cents > 1_000_000:
+        return err("Prix trop élevé (maximum 10 000 $).", 400)
+
+    deja_valide = bool(row["price_cents"])
+    db().execute(
+        "UPDATE tickets SET price_cents = ?, validated_at = ? WHERE id = ?",
+        (cents, now(), tid),
+    )
+    db().commit()
+
+    montant = price_str(cents)
+    send_email(
+        row["email"],
+        f"[{tid}] Votre commande est prête — {montant}",
+        email_layout(
+            "Prix mis à jour" if deja_valide else "Prix confirmé ✔",
+            [f"Bonjour {html.escape(row['name'])},",
+             f"Nous avons validé votre demande <strong>{tid}</strong>.",
+             f"Prix total (livraison incluse) : <strong>{montant}</strong>",
+             "Cliquez sur « Confirmer ma commande » pour payer en ligne de façon sécurisée (Stripe). "
+             "La production démarre dès la réception du paiement."],
+            ticket_link_client(tid), "Confirmer et payer",
+        ),
+    )
+    row = db().execute("SELECT * FROM tickets WHERE id = ?", (tid,)).fetchone()
+    return jsonify({"ticket": ticket_dict(row, include_private=True)})
 
 @app.post("/api/admin/tickets/<tid>/complete")
 def admin_complete(tid):
