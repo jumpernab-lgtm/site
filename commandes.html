@@ -307,6 +307,7 @@
           ["Créée le", fmtDate(t.created_at)],
           ["Statut", STATUS_LABELS[t.status] || t.status],
           ["Livraison", t.adresse + ", " + t.ville + ", " + t.code_postal],
+          ["Couleur", t.couleur || "—"],
           ["Description", t.description],
         ];
         if (t.confirmed_at) pairs.splice(2, 0, ["Confirmée le", fmtDate(t.confirmed_at)]);
