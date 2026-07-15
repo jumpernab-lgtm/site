@@ -56,6 +56,7 @@
         <button class="tab active" data-status="ouvert">Tickets<span class="count" id="count-ouvert">0</span></button>
         <button class="tab" data-status="en_cours">Commandes en cours<span class="count" id="count-en_cours">0</span></button>
         <button class="tab" data-status="terminee">Commandes passées<span class="count" id="count-terminee">0</span></button>
+        <button class="tab" data-status="colors">Couleurs</button>
       </div>
 
       <div class="alert hidden" id="panel-alert"></div>
@@ -200,6 +201,68 @@
         }
       }
 
+      /* ---------------- Couleurs ---------------- */
+      async function renderColors() {
+        hideAlert($("#panel-alert"));
+        const container = $("#panel-list");
+        container.textContent = "Chargement…";
+        try {
+          const data = await api("/api/colors");
+          container.textContent = "";
+
+          const input = el("input", { type: "text", id: "new-color", maxlength: "40", placeholder: "Ex. Rouge, Gris, Orange…" });
+          input.addEventListener("keydown", function (evt) {
+            if (evt.key === "Enter") { evt.preventDefault(); addColor(); }
+          });
+          container.appendChild(el("div", { class: "card", style: "margin-bottom: 16px;" }, [
+            el("div", { class: "field", style: "margin-bottom: 12px;" }, [
+              el("label", { text: "Ajouter une couleur" }),
+              input,
+            ]),
+            el("button", { class: "btn btn-primary btn-sm", text: "Ajouter", onclick: addColor }),
+            el("p", { class: "muted", style: "font-size: 0.85rem; margin: 12px 0 0;", text: "Ces couleurs apparaissent immédiatement dans le menu « Couleur » du formulaire de commande." }),
+          ]));
+
+          if (!data.colors.length) {
+            container.appendChild(el("div", { class: "empty", text: "Aucune couleur disponible. Ajoutez-en au moins une pour le formulaire." }));
+            return;
+          }
+          for (const c of data.colors) {
+            container.appendChild(el("div", { class: "color-row" }, [
+              el("span", { text: c.name }),
+              el("button", { class: "btn btn-danger btn-sm", text: "Supprimer", onclick: function () { deleteColor(c); } }),
+            ]));
+          }
+        } catch (e) {
+          if (!handleAuthError(e)) {
+            container.textContent = "";
+            showAlert($("#panel-alert"), e.error || "Erreur de chargement des couleurs.");
+          }
+        }
+      }
+
+      async function addColor() {
+        const input = $("#new-color");
+        const name = input ? input.value.trim() : "";
+        if (!name) return;
+        try {
+          await api("/api/admin/colors", { method: "POST", body: { name: name }, admin: true });
+          renderColors();
+        } catch (e) {
+          if (!handleAuthError(e)) showAlert($("#panel-alert"), e.error || "Impossible d'ajouter cette couleur.");
+        }
+      }
+
+      async function deleteColor(c) {
+        if (!window.confirm("Supprimer la couleur « " + c.name + " » ? Elle disparaîtra du formulaire de commande.")) return;
+        try {
+          await api("/api/admin/colors/" + c.id, { method: "DELETE", admin: true });
+          renderColors();
+        } catch (e) {
+          if (!handleAuthError(e)) showAlert($("#panel-alert"), e.error || "Suppression impossible.");
+        }
+      }
+
       function panelKey() {
         return JSON.stringify(allTickets.map(function (t) { return [t.id, t.status]; }));
       }
@@ -210,7 +273,8 @@
         $("#panel-list").textContent = "Chargement…";
         try {
           await loadAll();
-          renderList();
+          if (activeTab === "colors") renderColors();
+          else renderList();
           lastPanelKey = panelKey();
           // Rafraîchissement automatique : nouveaux tickets, confirmations, compteurs
           panelPollTimer = setInterval(async function () {
@@ -219,7 +283,7 @@
               await loadAll(); // met aussi à jour les compteurs des onglets
               if (panelKey() !== lastPanelKey) {
                 lastPanelKey = panelKey();
-                renderList();
+                if (activeTab !== "colors") renderList();
               }
             } catch (e) { /* silencieux */ }
           }, 15000);
@@ -235,7 +299,8 @@
           for (const other of document.querySelectorAll(".tab")) other.classList.remove("active");
           this.classList.add("active");
           activeTab = this.getAttribute("data-status");
-          renderList();
+          if (activeTab === "colors") renderColors();
+          else renderList();
         });
       }
 
@@ -277,6 +342,7 @@
           ["Client", t.name],
           ["Courriel", t.email],
           ["Livraison", t.adresse + ", " + t.ville + ", " + t.code_postal],
+          ["Couleur", t.couleur || "—"],
           ["Créée le", fmtDate(t.created_at)],
         ];
         if (t.confirmed_at) pairs.push(["Confirmée le", fmtDate(t.confirmed_at)]);
