@@ -314,6 +314,13 @@
 
         const actions = $("#detail-actions");
         actions.textContent = "";
+        if (t.status === "ouvert") {
+          actions.appendChild(el("button", {
+            class: "btn btn-ok",
+            text: t.price_cents ? "Modifier le prix" : "Valider le ticket",
+            onclick: function () { validateTicket(t, this); },
+          }));
+        }
         if (t.status === "en_cours") {
           actions.appendChild(el("button", {
             class: "btn btn-ok",
@@ -325,11 +332,15 @@
         const info = $("#detail-info");
         info.textContent = "";
         if (t.status === "ouvert") {
-          info.appendChild(el("div", { class: "notice", text: "En attente : le client n'a pas encore confirmé sa commande. Répondez-lui avec un prix (pièce + distance de livraison)." }));
+          if (t.price_cents) {
+            info.appendChild(el("div", { class: "notice", text: "✅ Ticket validé — prix : " + fmtPrice(t.price_cents) + ". En attente du paiement du client (son bouton « Confirmer ma commande » est maintenant actif)." }));
+          } else {
+            info.appendChild(el("div", { class: "notice", text: "Discutez avec le client, puis cliquez « Valider le ticket » pour fixer le prix exact et activer son bouton de paiement." }));
+          }
         } else if (t.status === "en_cours") {
           info.appendChild(el("div", { class: "payment-note" }, [
-            el("strong", { text: "💳 Paiement — " }),
-            "à organiser avec le client par courriel (intégration de paiement à venir).",
+            el("strong", { text: t.paid_at ? "💳 Paiement reçu le " + fmtDate(t.paid_at) + (t.price_cents ? " — " + fmtPrice(t.price_cents) : "") + ". " : "💳 Commande confirmée. " }),
+            "Imprimez la pièce, puis marquez la commande comme complétée.",
           ]));
         } else if (t.status === "terminee" && t.completed_at) {
           const deleteAt = t.completed_at + RETENTION_DAYS * 24 * 3600;
@@ -345,6 +356,8 @@
           ["Couleur", t.couleur || "—"],
           ["Créée le", fmtDate(t.created_at)],
         ];
+        if (t.price_cents) pairs.push(["Prix", fmtPrice(t.price_cents)]);
+        if (t.paid_at) pairs.push(["Payée le", fmtDate(t.paid_at)]);
         if (t.confirmed_at) pairs.push(["Confirmée le", fmtDate(t.confirmed_at)]);
         if (t.completed_at) pairs.push(["Complétée le", fmtDate(t.completed_at)]);
         pairs.push(["Description", t.description]);
@@ -371,7 +384,7 @@
       function detailKey(data) {
         const msgs = data.messages;
         const last = msgs.length ? msgs[msgs.length - 1].id : 0;
-        return data.ticket.status + ":" + msgs.length + ":" + last;
+        return data.ticket.status + ":" + (data.ticket.price_cents || 0) + ":" + msgs.length + ":" + last;
       }
 
       async function openTicket(id) {
@@ -395,6 +408,28 @@
           }, 5000);
         } catch (e) {
           if (!handleAuthError(e)) showAlert($("#detail-alert"), e.error || "Ticket introuvable.");
+        }
+      }
+
+      async function validateTicket(ticket, btn) {
+        const suggestion = ticket.price_cents ? (ticket.price_cents / 100).toFixed(2) : "";
+        const raw = window.prompt("Prix exact à facturer pour " + ticket.id + " (en $ CAD, livraison incluse) :", suggestion);
+        if (raw === null) return;
+        const price = parseFloat(raw.replace(",", ".").replace("$", "").trim());
+        if (!isFinite(price) || price < 0.5) {
+          showAlert($("#detail-alert"), "Prix invalide (minimum 0,50 $). Exemple : 25.50");
+          return;
+        }
+        if (!window.confirm("Valider " + ticket.id + " au prix de " + fmtPrice(Math.round(price * 100)) + " ?\nLe client recevra un courriel et son bouton de paiement sera activé.")) return;
+        btn.disabled = true;
+        try {
+          await api("/api/admin/tickets/" + encodeURIComponent(ticket.id) + "/validate", { method: "POST", body: { price: price }, admin: true });
+          const fresh = await api("/api/tickets/" + encodeURIComponent(ticket.id), { admin: true });
+          renderDetail(fresh);
+          lastDetailKey = detailKey(fresh);
+        } catch (e) {
+          btn.disabled = false;
+          if (!handleAuthError(e)) showAlert($("#detail-alert"), e.error || "Validation impossible.");
         }
       }
 
