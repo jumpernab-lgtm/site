@@ -46,7 +46,7 @@
     <form class="card" id="step-form">
       <div class="field">
         <label for="f-description">Que voulez-vous faire imprimer&nbsp;?</label>
-        <textarea id="f-description" maxlength="4000" required
+        <textarea id="f-description" minlength="10" maxlength="4000" required
           placeholder="Décrivez votre pièce : dimensions, couleur, matériau souhaité (PLA, PETG…), quantité, lien vers un modèle 3D si vous en avez un…"></textarea>
       </div>
 
@@ -211,6 +211,10 @@
           ville: $("#f-ville").value.trim(),
           code_postal: cp,
         };
+        if (pending.description.length < 10) {
+          showAlert(formAlert, "Décrivez votre projet un peu plus en détail (au moins 10 caractères).");
+          return;
+        }
         const email = $("#f-email").value.trim().toLowerCase();
 
         busy(submitBtn, true);
@@ -245,9 +249,19 @@
           const email = $("#code-email-label").textContent;
           const auth = await api("/api/auth/verify", { method: "POST", body: { email: email, code: code } });
           setCust(auth.token, auth.email);
-          await createTicket();
         } catch (e) {
           showAlert(codeAlert, e.error || "Code invalide.");
+          busy(codeBtn, false, "Vérifier et envoyer ma demande");
+          return;
+        }
+        try {
+          await createTicket();
+        } catch (e) {
+          // Courriel vérifié, mais la demande a été refusée (ex. champ invalide) :
+          // retour au formulaire avec le message. Pas besoin d'un nouveau code —
+          // la session est déjà créée, le prochain envoi passera directement.
+          show("form");
+          showAlert(formAlert, e.error || "Votre demande n'a pas pu être envoyée. Vérifiez les champs et réessayez.");
         }
         busy(codeBtn, false, "Vérifier et envoyer ma demande");
       });
