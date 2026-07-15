@@ -1,7 +1,7 @@
 /* ============================================================
    Impressions 3D QC — Feuille de style commune
    Palette : Plateau #101319 · Acier #171B23 · Filament #FF6B1A
-             Ambre #FFB25E · Vert statut #43D9A3
+             Cyan #4EC9E0 · Vert statut #43D9A3
    Typo    : Chakra Petch (titres) · IBM Plex Sans (texte)
              IBM Plex Mono (IDs, badges, étiquettes G-code)
    ============================================================ */
@@ -14,7 +14,7 @@
   --text: #edeae3;
   --muted: #98a0ad;
   --accent: #ff6b1a;
-  --accent-soft: #ffb25e;
+  --accent-soft: #4ec9e0;
   --ok: #43d9a3;
   --danger: #ff5d5d;
   --radius: 8px;
@@ -152,70 +152,9 @@ a:hover { text-decoration: underline; }
 
 /* --- Héros ----------------------------------------------------- */
 .hero { padding: 84px 0 72px; border-bottom: 1px solid var(--line); }
-.hero-grid {
-  display: grid;
-  grid-template-columns: 1.15fr 0.85fr;
-  gap: 48px;
-  align-items: center;
-}
 .hero h1 .hl { color: var(--accent); }
 .hero-sub { color: var(--muted); font-size: 1.08rem; max-width: 46ch; }
 .hero-cta { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 26px; }
-
-/* --- Carte « impression en cours » (signature du héros) ------- */
-.print-card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
-}
-.pc-head, .pc-foot {
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  padding: 10px 16px;
-}
-.pc-head { border-bottom: 1px solid var(--line); }
-.pc-foot { border-top: 1px solid var(--line); }
-.pc-live { color: var(--ok); }
-.pc-body {
-  padding: 26px 16px;
-  display: flex;
-  justify-content: center;
-  background:
-    repeating-linear-gradient(to bottom,
-      rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 8px);
-}
-.pc-layers {
-  display: flex;
-  flex-direction: column-reverse;
-  align-items: center;
-  gap: 4px;
-  width: 200px;
-}
-.pc-layers span {
-  display: block;
-  height: 9px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-soft));
-  width: calc(38% + var(--w) * 1%);
-  opacity: 0.14;
-  animation: pc-fill 7s linear infinite;
-  animation-delay: calc(var(--i) * 0.45s);
-}
-@keyframes pc-fill {
-  0% { opacity: 0.14; }
-  6% { opacity: 1; }
-  82% { opacity: 1; }
-  95%, 100% { opacity: 0.14; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .pc-layers span { animation: none; opacity: 0.9; }
-}
 
 /* --- Étapes ----------------------------------------------------- */
 .steps {
@@ -361,7 +300,7 @@ a:hover { text-decoration: underline; }
   border-radius: 4px;
   white-space: nowrap;
 }
-.b-open   { background: rgba(255, 178, 94, 0.14); color: var(--accent-soft); border: 1px solid rgba(255, 178, 94, 0.4); }
+.b-open   { background: rgba(78, 201, 224, 0.12); color: var(--accent-soft); border: 1px solid rgba(78, 201, 224, 0.4); }
 .b-active { background: rgba(255, 107, 26, 0.14); color: var(--accent);      border: 1px solid rgba(255, 107, 26, 0.45); }
 .b-done   { background: rgba(67, 217, 163, 0.12); color: var(--ok);          border: 1px solid rgba(67, 217, 163, 0.4); }
 
@@ -558,7 +497,6 @@ a:hover { text-decoration: underline; }
 
 /* --- Responsive ----------------------------------------------------------- */
 @media (max-width: 860px) {
-  .hero-grid { grid-template-columns: 1fr; gap: 34px; }
   .steps { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 560px) {
