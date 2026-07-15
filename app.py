@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   email        TEXT NOT NULL,
   name         TEXT NOT NULL,
   description  TEXT NOT NULL,
+  couleur      TEXT NOT NULL DEFAULT '',
   adresse      TEXT NOT NULL,
   ville        TEXT NOT NULL,
   code_postal  TEXT NOT NULL,
@@ -109,6 +110,10 @@ CREATE TABLE IF NOT EXISTS attempts (
   ts  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_attempts_key ON attempts(key, ts);
+CREATE TABLE IF NOT EXISTS colors (
+  id   INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE
+);
 CREATE TABLE IF NOT EXISTS meta (
   k TEXT PRIMARY KEY,
   v TEXT
@@ -131,6 +136,13 @@ def _close_db(exc=None):
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA)
+    # Migration : ajoute la colonne couleur aux bases existantes
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(tickets)").fetchall()]
+    if "couleur" not in cols:
+        conn.execute("ALTER TABLE tickets ADD COLUMN couleur TEXT NOT NULL DEFAULT ''")
+    # Couleurs par défaut au premier démarrage
+    if conn.execute("SELECT COUNT(*) FROM colors").fetchone()[0] == 0:
+        conn.executemany("INSERT INTO colors (name) VALUES (?)", [("Noir",), ("Blanc",)])
     conn.commit()
     conn.close()
 
@@ -269,11 +281,16 @@ def new_ticket_id() -> str:
         if not exists:
             return tid
 
+def colors_list() -> list[dict]:
+    rows = db().execute("SELECT id, name FROM colors ORDER BY name COLLATE NOCASE").fetchall()
+    return [{"id": r["id"], "name": r["name"]} for r in rows]
+
 def ticket_dict(row: sqlite3.Row, include_private: bool) -> dict:
     d = {
         "id": row["id"],
         "status": row["status"],
         "description": row["description"],
+        "couleur": row["couleur"],
         "created_at": row["created_at"],
         "confirmed_at": row["confirmed_at"],
         "completed_at": row["completed_at"],
@@ -428,6 +445,7 @@ def create_ticket():
     adresse = str(body.get("adresse", "")).strip()
     ville = str(body.get("ville", "")).strip()
     code_postal = str(body.get("code_postal", "")).strip().upper()
+    couleur = str(body.get("couleur", "")).strip()[:40]
 
     if not (1 <= len(name) <= 120):
         return err("Veuillez indiquer votre nom.", 400)
@@ -437,40 +455,46 @@ def create_ticket():
         return err("Adresse ou ville invalide.", 400)
     if not POSTAL_QC_RE.match(code_postal):
         return err("Nous livrons uniquement au Québec (code postal commençant par G, H ou J).", 400)
+    valid_colors = [c["name"] for c in colors_list()]
+    if valid_colors and couleur not in valid_colors:
+        return err("Choisissez une couleur dans la liste.", 400)
 
     tid = new_ticket_id()
     db().execute(
-        "INSERT INTO tickets (id, email, name, description, adresse, ville, code_postal, status, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, 'ouvert', ?)",
-        (tid, email, name, description, adresse, ville, code_postal, now()),
+        "INSERT INTO tickets (id, email, name, description, couleur, adresse, ville, code_postal, status, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ouvert', ?)",
+        (tid, email, name, description, couleur, adresse, ville, code_postal, now()),
     )
     db().commit()
     record_attempt(f"newticket:{email}")
 
     desc_html = html.escape(description[:500])
+    couleur_html = html.escape(couleur) if couleur else ""
+    client_lines = [
+        f"Bonjour {html.escape(name)},",
+        f"Votre demande <strong>{tid}</strong> a bien été créée. Nous allons l'étudier et vous "
+        "répondre avec un prix (selon la pièce et la distance de livraison).",
+    ]
+    if couleur_html:
+        client_lines.append(f"Couleur choisie : <strong>{couleur_html}</strong>")
+    client_lines.append(f"<em>« {desc_html} »</em>")
+    client_lines.append(f"Pour toute question : <strong>{ADMIN_EMAIL}</strong>")
     send_email(
         email,
         f"[{tid}] Votre demande a bien été reçue",
-        email_layout(
-            "Demande reçue ✔",
-            [f"Bonjour {html.escape(name)},",
-             f"Votre demande <strong>{tid}</strong> a bien été créée. Nous allons l'étudier et vous "
-             "répondre avec un prix (selon la pièce et la distance de livraison).",
-             f"<em>« {desc_html} »</em>",
-             f"Pour toute question : <strong>{ADMIN_EMAIL}</strong>"],
-            ticket_link_client(tid), "Voir ma demande",
-        ),
+        email_layout("Demande reçue ✔", client_lines, ticket_link_client(tid), "Voir ma demande"),
     )
+    admin_lines = [
+        f"<strong>{html.escape(name)}</strong> ({html.escape(email)})",
+        f"Livraison : {html.escape(adresse)}, {html.escape(ville)}, {html.escape(code_postal)}",
+    ]
+    if couleur_html:
+        admin_lines.append(f"Couleur : <strong>{couleur_html}</strong>")
+    admin_lines.append(f"<em>« {desc_html} »</em>")
     send_email(
         ADMIN_EMAIL,
         f"[{tid}] Nouveau ticket de {name}",
-        email_layout(
-            "Nouveau ticket",
-            [f"<strong>{html.escape(name)}</strong> ({html.escape(email)})",
-             f"Livraison : {html.escape(adresse)}, {html.escape(ville)}, {html.escape(code_postal)}",
-             f"<em>« {desc_html} »</em>"],
-            ticket_link_admin(tid), "Ouvrir dans le panneau admin",
-        ),
+        email_layout("Nouveau ticket", admin_lines, ticket_link_admin(tid), "Ouvrir dans le panneau admin"),
     )
     row = db().execute("SELECT * FROM tickets WHERE id = ?", (tid,)).fetchone()
     return jsonify({"ticket": ticket_dict(row, include_private=True)}), 201
@@ -589,6 +613,35 @@ def confirm_ticket(tid):
     )
     row = db().execute("SELECT * FROM tickets WHERE id = ?", (tid,)).fetchone()
     return jsonify({"ticket": ticket_dict(row, include_private=True)})
+
+# ------------------------------------------------------------
+# Couleurs disponibles (menu du formulaire de commande)
+# ------------------------------------------------------------
+@app.get("/api/colors")
+def get_colors():
+    return jsonify({"colors": colors_list()})
+
+@app.post("/api/admin/colors")
+def admin_add_color():
+    if not is_admin():
+        return err("Accès refusé.", 401)
+    name = str(json_body().get("name", "")).strip()
+    if not (1 <= len(name) <= 40):
+        return err("Nom de couleur invalide (1 à 40 caractères).", 400)
+    exists = db().execute("SELECT 1 FROM colors WHERE lower(name) = lower(?)", (name,)).fetchone()
+    if exists:
+        return err("Cette couleur existe déjà.", 409)
+    db().execute("INSERT INTO colors (name) VALUES (?)", (name,))
+    db().commit()
+    return jsonify({"colors": colors_list()}), 201
+
+@app.delete("/api/admin/colors/<int:color_id>")
+def admin_delete_color(color_id):
+    if not is_admin():
+        return err("Accès refusé.", 401)
+    db().execute("DELETE FROM colors WHERE id = ?", (color_id,))
+    db().commit()
+    return jsonify({"colors": colors_list()})
 
 # ------------------------------------------------------------
 # Panneau admin
