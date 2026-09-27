@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mes commandes — Impressions 3D QC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./assets/style.css">
+</head>
+<body>
+
+  <nav class="nav">
+    <a class="nav-logo" href="./index.html">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 2 21 7v10l-9 5-9-5V7l9-5z" stroke="#FF6B1A" stroke-width="1.6" stroke-linejoin="round"/>
+        <path d="M12 12 21 7M12 12v10M12 12 3 7" stroke="#FF6B1A" stroke-width="1.2"/>
+      </svg>
+      IMPRESSIONS<b>3D</b>QC
+    </a>
+    <div class="nav-links">
+      <a href="./index.html">Accueil</a>
+      <a href="./commandes.html" class="active">Commandes</a>
+      <a class="btn btn-primary btn-sm" href="./shop.html">Passer une Commande</a>
+    </div>
+  </nav>
+
+  <main class="wrap" style="max-width: 820px;">
+
+    <!-- ================== CONNEXION ================== -->
+    <section id="view-login" class="hidden">
+      <div class="page-head">
+        <div class="eyebrow">; ACCÈS_CLIENT</div>
+        <h1>Mes commandes</h1>
+        <p class="muted">Entrez le courriel utilisé lors de votre demande. Un code de vérification vous sera envoyé — aucun mot de passe à retenir.</p>
+      </div>
+
+      <form class="card" id="login-email-step">
+        <div class="field">
+          <label for="l-email">Votre courriel</label>
+          <input type="email" id="l-email" maxlength="254" required placeholder="vous@exemple.com">
+        </div>
+        <div class="alert hidden" id="login-alert"></div>
+        <button class="btn btn-primary" type="submit" id="login-send" style="width: 100%;">Recevoir mon code</button>
+      </form>
+
+      <form class="card hidden" id="login-code-step">
+        <div class="eyebrow">; VÉRIFICATION</div>
+        <p class="muted">Code envoyé à <strong id="l-email-label"></strong>. (Vérifiez vos indésirables si besoin.)</p>
+        <div class="field">
+          <label for="l-code">Code de vérification</label>
+          <input type="text" id="l-code" inputmode="numeric" maxlength="6" placeholder="000000"
+            style="font-family: var(--font-mono); letter-spacing: 6px; font-size: 1.3rem; text-align: center;">
+        </div>
+        <div class="alert hidden" id="login-code-alert"></div>
+        <button class="btn btn-primary" type="submit" id="login-verify" style="width: 100%;">Me connecter</button>
+        <p class="muted" style="font-size: 0.88rem; margin: 14px 0 0;">
+          <a href="#" id="login-resend">Renvoyer un code</a> ·
+          <a href="#" id="login-back">Changer de courriel</a>
+        </p>
+      </form>
+    </section>
+
+    <!-- ================== LISTE DES COMMANDES ================== -->
+    <section id="view-list" class="hidden">
+      <div class="page-head detail-head">
+        <div>
+          <div class="eyebrow">; MES_COMMANDES</div>
+          <h1 style="margin-bottom: 4px;">Mes commandes</h1>
+          <p class="muted" style="margin: 0;">Connecté&nbsp;: <span class="mono" id="list-email"></span></p>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button class="btn btn-ghost btn-sm" id="list-refresh">Actualiser</button>
+          <button class="btn btn-ghost btn-sm" id="list-logout">Se déconnecter</button>
+        </div>
+      </div>
+      <div class="alert hidden" id="list-alert"></div>
+      <div id="list-container" style="margin-top: 14px;"></div>
+    </section>
+
+    <!-- ================== DÉTAIL D'UNE COMMANDE ================== -->
+    <section id="view-detail" class="hidden">
+      <div class="page-head detail-head">
+        <div class="detail-head-left">
+          <button class="btn btn-ghost btn-sm" id="detail-back">← Retour</button>
+          <span class="tr-id" id="detail-id" style="font-size: 1.05rem;"></span>
+          <span id="detail-badge"></span>
+        </div>
+        <div id="detail-actions"></div>
+      </div>
+
+      <div class="alert hidden" id="detail-alert"></div>
+      <div class="successbox hidden" id="detail-success"></div>
+      <div id="detail-payment"></div>
+
+      <div class="card">
+        <dl class="kv" id="detail-kv"></dl>
+      </div>
+
+      <h3 style="margin-top: 26px;">Discussion</h3>
+      <p class="muted" style="font-size: 0.88rem;">
+        Chaque message envoyé ici est aussi transmis par courriel à l'autre partie.
+      </p>
+      <div class="thread" id="detail-thread"></div>
+
+      <div class="reply-row">
+        <textarea id="reply-body" maxlength="3000" placeholder="Écrire un message…"></textarea>
+        <button class="btn btn-primary" id="reply-send">Envoyer</button>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      © 2026 Impressions 3D QC — Livraison au Québec seulement ·
+      Support&nbsp;: <a href="mailto:impressions3dqc@proton.me">impressions3dqc@proton.me</a>
+    </div>
+  </footer>
+
+  <div id="server-hint">⏳ Le serveur se réveille… le premier chargement peut prendre jusqu'à une minute.</div>
+  <script src="./assets/app.js"></script>
+  <script>
+    (function () {
+      const views = { login: $("#view-login"), list: $("#view-list"), detail: $("#view-detail") };
+      let currentTicketId = null;
+      let pollTimer = null;      // suivi auto du ticket ouvert
+      let listPollTimer = null;  // suivi auto de la liste
+      let lastDetailKey = "";
+      let lastListKey = "";
+      let resendCooldown = 0;
+
+      function show(name) {
+        for (const key of Object.keys(views)) views[key].classList.toggle("hidden", key !== name);
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (listPollTimer) { clearInterval(listPollTimer); listPollTimer = null; }
+        window.scrollTo({ top: 0 });
+      }
+
+      function handleAuthError(err) {
+        if (err && err.status === 401) {
+          clearCust();
+          show("login");
+          showAlert($("#login-alert"), "Votre session a expiré. Reconnectez-vous.");
+          return true;
+        }
+        return false;
+      }
+
+      /* ---------------- Connexion ---------------- */
+      $("#login-email-step").addEventListener("submit", async function (evt) {
+        evt.preventDefault();
+        hideAlert($("#login-alert"));
+        const email = $("#l-email").value.trim().toLowerCase();
+        try {
+          await api("/api/auth/request-code", { method: "POST", body: { email: email } });
+          $("#l-email-label").textContent = email;
+          $("#login-email-step").classList.add("hidden");
+          $("#login-code-step").classList.remove("hidden");
+          $("#l-code").focus();
+          resendCooldown = Date.now() + 30000;
+        } catch (e) {
+          showAlert($("#login-alert"), e.error || "Une erreur est survenue.");
+        }
+      });
+
+      $("#login-code-step").addEventListener("submit", async function (evt) {
+        evt.preventDefault();
+        hideAlert($("#login-code-alert"));
+        const code = $("#l-code").value.trim();
+        if (!/^\d{6}$/.test(code)) {
+          showAlert($("#login-code-alert"), "Entrez le code à 6 chiffres reçu par courriel.");
+          return;
+        }
+        try {
+          const email = $("#l-email-label").textContent;
+          const auth = await api("/api/auth/verify", { method: "POST", body: { email: email, code: code } });
+          setCust(auth.token, auth.email);
+          const params = new URLSearchParams(location.search);
+          if (params.get("ticket")) openTicket(params.get("ticket"));
+          else openList();
+        } catch (e) {
+          showAlert($("#login-code-alert"), e.error || "Code invalide.");
+        }
+      });
+
+      $("#login-resend").addEventListener("click", async function (evt) {
+        evt.preventDefault();
+        hideAlert($("#login-code-alert"));
+        if (Date.now() < resendCooldown) {
+          showAlert($("#login-code-alert"), "Patientez quelques secondes avant de renvoyer un code.");
+          return;
+        }
+        try {
+          await api("/api/auth/request-code", { method: "POST", body: { email: $("#l-email-label").textContent } });
+          resendCooldown = Date.now() + 30000;
+          showAlert($("#login-code-alert"), "Nouveau code envoyé ✔");
+        } catch (e) {
+          showAlert($("#login-code-alert"), e.error || "Impossible de renvoyer un code pour l'instant.");
+        }
+      });
+
+      $("#login-back").addEventListener("click", function (evt) {
+        evt.preventDefault();
+        $("#login-code-step").classList.add("hidden");
+        $("#login-email-step").classList.remove("hidden");
+      });
+
+      /* ---------------- Liste ---------------- */
+      function listKey(tickets) {
+        return JSON.stringify(tickets.map(function (t) { return [t.id, t.status]; }));
+      }
+
+      function renderList(tickets) {
+        const container = $("#list-container");
+        container.textContent = "";
+        if (!tickets.length) {
+          container.appendChild(el("div", { class: "empty" }, [
+            el("p", { text: "Aucune commande pour l'instant." }),
+            el("a", { class: "btn btn-primary", href: "./shop.html", text: "Passer une commande" }),
+          ]));
+          return;
+        }
+        for (const t of tickets) {
+          const row = el("button", { class: "ticket-row", type: "button", onclick: function () { openTicket(t.id); } }, [
+            el("div", { class: "tr-top" }, [
+              el("span", { class: "tr-id", text: t.id }),
+              badge(t.status),
+              el("span", { class: "tr-date", text: fmtDate(t.created_at) }),
+            ]),
+            el("p", { class: "tr-preview", text: t.ville + " — " + t.description }),
+          ]);
+          container.appendChild(row);
+        }
+      }
+
+      async function openList() {
+        show("list");
+        $("#list-email").textContent = custEmail();
+        hideAlert($("#list-alert"));
+        $("#list-container").textContent = "Chargement…";
+        try {
+          const data = await api("/api/me/tickets");
+          renderList(data.tickets);
+          lastListKey = listKey(data.tickets);
+          // Rafraîchissement automatique de la liste (nouveaux statuts, nouvelles commandes)
+          listPollTimer = setInterval(async function () {
+            if (document.hidden) return;
+            try {
+              const fresh = await api("/api/me/tickets");
+              if (listKey(fresh.tickets) !== lastListKey) {
+                lastListKey = listKey(fresh.tickets);
+                renderList(fresh.tickets);
+              }
+            } catch (e) { /* silencieux */ }
+          }, 20000);
+        } catch (e) {
+          if (!handleAuthError(e)) showAlert($("#list-alert"), e.error || "Erreur de chargement.");
+        }
+      }
+
+      $("#list-refresh").addEventListener("click", openList);
+      $("#list-logout").addEventListener("click", function () {
+        clearCust();
+        $("#login-email-step").classList.remove("hidden");
+        $("#login-code-step").classList.add("hidden");
+        show("login");
+      });
+
+      /* ---------------- Détail ---------------- */
+      function renderPaymentNote(ticket) {
+        const zone = $("#detail-payment");
+        zone.textContent = "";
+        if (ticket.status === "ouvert") {
+          if (ticket.price_cents) {
+            zone.appendChild(el("div", { class: "payment-note" }, [
+              el("strong", { text: "✅ Ticket validé — prix confirmé : " + fmtPrice(ticket.price_cents) + ". " }),
+              "Cliquez sur « Confirmer ma commande » pour payer par carte (paiement sécurisé Stripe). La production démarre dès le paiement.",
+            ]));
+          } else {
+            zone.appendChild(el("div", { class: "notice", text: "⏳ En attente de validation par notre équipe : le bouton « Confirmer ma commande » s'activera dès qu'un prix aura été confirmé pour votre demande." }));
+          }
+        } else if (ticket.status === "en_cours") {
+          const label = ticket.paid_at
+            ? "💳 Paiement reçu le " + fmtDate(ticket.paid_at) + (ticket.price_cents ? " (" + fmtPrice(ticket.price_cents) + ")" : "") + ". Votre commande est en production."
+            : "Votre commande est en production.";
+          zone.appendChild(el("div", { class: "payment-note", text: label }));
+        }
+      }
+
+      function renderDetail(data) {
+        const t = data.ticket;
+        $("#detail-id").textContent = t.id;
+        const badgeSlot = $("#detail-badge");
+        badgeSlot.textContent = "";
+        badgeSlot.appendChild(badge(t.status));
+
+        // Bouton « Confirmer ma commande » en haut à droite (statut ouvert seulement).
+        // Grisé tant que le ticket n'a pas été validé (prix fixé) par notre équipe.
+        const actions = $("#detail-actions");
+        actions.textContent = "";
+        if (t.status === "ouvert") {
+          const confirmBtn = el("button", {
+            class: "btn btn-primary",
+            text: "Confirmer ma commande",
+            onclick: function () { startCheckout(t.id, this); },
+          });
+          if (!t.price_cents) {
+            confirmBtn.disabled = true;
+            confirmBtn.title = "En attente de validation par notre équipe";
+          }
+          actions.appendChild(confirmBtn);
+        }
+
+        renderPaymentNote(t);
+
+        const kv = $("#detail-kv");
+        kv.textContent = "";
+        const pairs = [
+          ["Créée le", fmtDate(t.created_at)],
+          ["Statut", STATUS_LABELS[t.status] || t.status],
+          ["Livraison", t.adresse + ", " + t.ville + ", " + t.code_postal],
+          ["Couleur", t.couleur || "—"],
+          ["Description", t.description],
+        ];
+        if (t.confirmed_at) pairs.splice(2, 0, ["Confirmée le", fmtDate(t.confirmed_at)]);
+        if (t.completed_at) pairs.splice(2, 0, ["Complétée le", fmtDate(t.completed_at)]);
+        if (t.price_cents) pairs.splice(2, 0, ["Prix", fmtPrice(t.price_cents)]);
+        for (const p of pairs) {
+          kv.appendChild(el("dt", { text: p[0] }));
+          kv.appendChild(el("dd", { text: p[1] }));
+        }
+
+        renderThread(data.messages);
+      }
+
+      function renderThread(messages) {
+        const thread = $("#detail-thread");
+        thread.textContent = "";
+        if (!messages.length) {
+          thread.appendChild(el("div", { class: "empty", text: "Pas encore de message. Notre équipe vous répond bientôt — vous pouvez ajouter des détails ci-dessous." }));
+          return;
+        }
+        for (const m of messages) {
+          const mine = m.sender === "client";
+          thread.appendChild(el("div", { class: "msg" + (mine ? " mine" : "") }, [
+            el("div", { class: "msg-meta", text: (mine ? "Vous" : "Impressions 3D QC") + " · " + fmtDate(m.created_at) }),
+            el("div", { class: "msg-body", text: m.body }),
+          ]));
+        }
+      }
+
+      function detailKey(data) {
+        const msgs = data.messages;
+        const last = msgs.length ? msgs[msgs.length - 1].id : 0;
+        return data.ticket.status + ":" + (data.ticket.price_cents || 0) + ":" + msgs.length + ":" + last;
+      }
+
+      async function openTicket(id) {
+        currentTicketId = id;
+        show("detail");
+        hideAlert($("#detail-alert"));
+        $("#detail-success").classList.add("hidden");
+        try {
+          const data = await api("/api/tickets/" + encodeURIComponent(id));
+          renderDetail(data);
+          lastDetailKey = detailKey(data);
+          if (paymentFlash === "succes") {
+            const box = $("#detail-success");
+            box.textContent = "Paiement effectué ✔ Merci ! Votre commande passe en production — le statut se met à jour dans quelques secondes.";
+            box.classList.remove("hidden");
+            paymentFlash = null;
+          } else if (paymentFlash === "annule") {
+            showAlert($("#detail-alert"), "Paiement annulé. Vous pouvez réessayer quand vous voulez avec « Confirmer ma commande ».");
+            paymentFlash = null;
+          }
+          // Rafraîchissement automatique : nouveaux messages / changements de statut
+          pollTimer = setInterval(async function () {
+            if (document.hidden) return;
+            try {
+              const fresh = await api("/api/tickets/" + encodeURIComponent(currentTicketId));
+              if (detailKey(fresh) !== lastDetailKey) {
+                lastDetailKey = detailKey(fresh);
+                renderDetail(fresh);
+              }
+            } catch (e) { /* silencieux pendant le polling */ }
+          }, 5000);
+        } catch (e) {
+          if (!handleAuthError(e)) {
+            showAlert($("#detail-alert"), e.error || "Ticket introuvable.");
+          }
+        }
+      }
+
+      async function startCheckout(id, btn) {
+        btn.disabled = true;
+        btn.textContent = "Redirection vers le paiement…";
+        try {
+          const data = await api("/api/tickets/" + encodeURIComponent(id) + "/checkout", { method: "POST" });
+          window.location.href = data.url; // page de paiement sécurisée Stripe
+        } catch (e) {
+          btn.disabled = false;
+          btn.textContent = "Confirmer ma commande";
+          if (!handleAuthError(e)) showAlert($("#detail-alert"), e.error || "Impossible de démarrer le paiement.");
+        }
+      }
+
+      $("#detail-back").addEventListener("click", function () {
+        currentTicketId = null;
+        openList();
+      });
+
+      $("#reply-send").addEventListener("click", async function () {
+        const box = $("#reply-body");
+        const body = box.value.trim();
+        if (!body) return;
+        this.disabled = true;
+        try {
+          await api("/api/tickets/" + encodeURIComponent(currentTicketId) + "/messages", {
+            method: "POST",
+            body: { body: body },
+          });
+          box.value = "";
+          const fresh = await api("/api/tickets/" + encodeURIComponent(currentTicketId));
+          renderDetail(fresh);
+          lastDetailKey = detailKey(fresh);
+        } catch (e) {
+          if (!handleAuthError(e)) showAlert($("#detail-alert"), e.error || "Message non envoyé.");
+        }
+        this.disabled = false;
+      });
+
+      /* ---------------- Démarrage ---------------- */
+      const params = new URLSearchParams(location.search);
+      let paymentFlash = params.get("paiement"); // "succes" | "annule" au retour de Stripe
+      if (paymentFlash) {
+        const clean = params.get("ticket")
+          ? location.pathname + "?ticket=" + encodeURIComponent(params.get("ticket"))
+          : location.pathname;
+        history.replaceState(null, "", clean);
+      }
+      if (!custToken()) {
+        show("login");
+      } else if (params.get("ticket")) {
+        openTicket(params.get("ticket"));
+      } else {
+        openList();
+      }
+    })();
+  </script>
+</body>
+</html>
